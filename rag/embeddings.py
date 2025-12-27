@@ -1,33 +1,28 @@
-from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 class EmbeddingModel:
     """
-    Lightweight embedding model using TF-IDF.
-    Suitable for Streamlit Cloud (no downloads, no GPUs).
+    Cloud-safe embedding model using TF-IDF.
+    No external downloads. No transformers.
     """
 
     def __init__(self):
         self.vectorizer = TfidfVectorizer(
             stop_words="english",
-            max_features=512
+            max_features=512,
         )
-
-        # Fit on a minimal corpus to initialize
-        self._is_fitted = False
+        self._fitted = False
 
     def embed(self, texts):
-        """
-        Embed text(s) into vectors.
-        Accepts str or list[str].
-        """
         if isinstance(texts, str):
             texts = [texts]
 
-        if not self._is_fitted:
+        if not self._fitted:
             self.vectorizer.fit(texts)
-            self._is_fitted = True
+            self._fitted = True
 
         vectors = self.vectorizer.transform(texts).toarray()
         return np.array(vectors)
+
