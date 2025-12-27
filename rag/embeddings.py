@@ -1,40 +1,33 @@
-# rag/embeddings.py
-
-from typing import List
+from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
-
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    SentenceTransformer = None
 
 
 class EmbeddingModel:
     """
-    Wrapper around sentence embedding models.
-
-    This layer is intentionally thin so models can be swapped
-    without affecting downstream retrieval logic.
+    Lightweight embedding model using TF-IDF.
+    Suitable for Streamlit Cloud (no downloads, no GPUs).
     """
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        if SentenceTransformer is None:
-            raise ImportError(
-                "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
-            )
+    def __init__(self):
+        self.vectorizer = TfidfVectorizer(
+            stop_words="english",
+            max_features=512
+        )
 
-        self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
+        # Fit on a minimal corpus to initialize
+        self._is_fitted = False
 
-    def embed(self, text: str) -> np.ndarray:
+    def embed(self, texts):
         """
-        Embed a single text string.
+        Embed text(s) into vectors.
+        Accepts str or list[str].
         """
-        return self.model.encode(text, normalize_embeddings=True)
+        if isinstance(texts, str):
+            texts = [texts]
 
-    def embed_batch(self, texts: List[str]) -> np.ndarray:
-        """
-        Embed a batch of texts.
-        """
-        return self.model.encode(texts, normalize_embeddings=True)
+        if not self._is_fitted:
+            self.vectorizer.fit(texts)
+            self._is_fitted = True
+
+        vectors = self.vectorizer.transform(texts).toarray()
+        return np.array(vectors)
