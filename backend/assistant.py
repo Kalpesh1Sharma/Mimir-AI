@@ -258,7 +258,7 @@ class MimirAssistant:
     # --------------------------------------------------
 
     def _handle_rag_query(self, text: str) -> Dict[str, Any]:
-        query_vec = self.embedder.embed(text)
+        query_vec = self.embedder.embed(text)[0]
         chunks = self.retriever.retrieve(
             query_vector=query_vec,
             domain="technical",
