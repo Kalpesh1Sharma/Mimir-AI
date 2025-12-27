@@ -1,0 +1,8 @@
+FAISS (Facebook AI Similarity Search) is a library developed by Facebook AI Research (FAIR) for efficient similarity search and clustering of dense vectors.
+
+It contains algorithms that search in sets of vectors of any size, up to ones that possibly do not fit in RAM. It assumes that the vectors are fixed-size arrays of floating-point numbers.
+
+How FAISS works:
+1. Indexing: It builds an index of vectors to speed up the search process.
+2. Quantization: It can compress vectors to save memory while maintaining search accuracy.
+3. Metric: It typically uses L2 (Euclidean) distance or Inner Product (Dot Product) to measure similarity between the query vector and the stored vectors.

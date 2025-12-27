@@ -1,0 +1,7 @@
+Retrieval-Augmented Generation (RAG) is an architectural framework that improves the quality and accuracy of Large Language Model (LLM) generated responses by grounding the model on external sources of knowledge.
+
+Traditional LLMs rely solely on the data they were trained on, which can be outdated or lack specific domain knowledge. RAG addresses this by retrieving relevant information from a trusted knowledge base (like a company database or vector store) before generating an answer.
+
+The process involves two main steps:
+1. Retrieval: The system searches for documents relevant to the user's query.
+2. Generation: The retrieved documents are passed to the LLM as context, allowing it to generate a factual, up-to-date response.

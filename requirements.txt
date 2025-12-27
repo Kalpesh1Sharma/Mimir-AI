@@ -1,0 +1,21 @@
+fastapi
+uvicorn
+python-dotenv
+
+# RAG & embeddings
+faiss-cpu
+numpy
+scikit-learn
+
+# File Q&A
+PyPDF2
+
+# Web search tools
+duckduckgo-search
+requests
+
+# Streamlit UI
+streamlit
+
+# Optional (safe to include)
+pydantic

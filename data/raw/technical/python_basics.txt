@@ -1,0 +1,8 @@
+Python is a high-level, interpreted, general-purpose programming language. Its design philosophy emphasizes code readability with the use of significant indentation.
+
+Python is dynamically typed and garbage-collected. It supports multiple programming paradigms, including structured (particularly procedural), object-oriented, and functional programming.
+
+Key features include:
+- Interpreted Nature: Code is executed line by line, which makes debugging easier.
+- Standard Library: A vast collection of modules for tasks ranging from regular expressions to documentation generation.
+- Ecosystem: It is the dominant language in Data Science and AI, with libraries like Pandas, NumPy, PyTorch, and TensorFlow.

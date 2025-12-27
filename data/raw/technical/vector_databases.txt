@@ -1,0 +1,8 @@
+A vector database is a type of database designed to store, manage, and index massive quantities of high-dimensional vector data.
+
+Unlike traditional relational databases that store strings and numbers in rows and columns, vector databases store "embeddings"—mathematical representations of data (text, images, audio) that capture semantic meaning.
+
+Why they are essential for AI:
+- Semantic Search: They allow searching by meaning rather than exact keyword matching.
+- Speed: They use specialized indexing algorithms (like HNSW or IVF) to find the "nearest neighbors" to a query vector in milliseconds.
+- Scalability: They can handle millions or billions of vectors efficiently.
