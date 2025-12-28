@@ -21,7 +21,7 @@ class MimirAssistant:
     def query(self, text, persona="default", mode="factual"):
         text = text.strip()
 
-        # 1️⃣ Math fast-path (NL + pure math)
+        # 1️⃣ Math fast-path
         expr = self._extract_math_expression(text)
         if expr:
             try:
@@ -32,15 +32,45 @@ class MimirAssistant:
                     "metadata": {"tool": "math"},
                 }
             except Exception:
-                pass  # safely fall through
+                pass
 
-        # 2️⃣ File QA
+        # 2️⃣ Static knowledge fast-path
+        static = self._static_knowledge(text)
+        if static:
+            return {
+                "answer": f"**{static}**",
+                "sources": [],
+                "confidence": 0.95,
+                "metadata": {"tool": "static_knowledge"},
+            }
+
+        # 3️⃣ File QA
         if self.file_qa._files_loaded:
             return self.file_qa.answer(text)
 
-        # 3️⃣ Persona + RAG
+        # 4️⃣ Persona + RAG
         persona_contract = self.persona_manager.load(persona)
         return self._handle_rag_query(text, persona_contract, mode)
+
+    # ======================
+    # STATIC KNOWLEDGE
+    # ======================
+    def _static_knowledge(self, text: str) -> str | None:
+        text = text.lower()
+
+        facts = {
+            "opposite of happy": "sad",
+            "who won ipl 2020": "Mumbai Indians",
+            "who won ipl 2021": "Chennai Super Kings",
+            "who won fifa world cup 2022": "Argentina",
+            "president of india": "Droupadi Murmu",
+        }
+
+        for k, v in facts.items():
+            if k in text:
+                return v
+
+        return None
 
     # ======================
     # RAG HANDLER
@@ -110,22 +140,13 @@ class MimirAssistant:
         return text
 
     # ======================
-    # MATH (FINAL FIX)
+    # SAFE MATH
     # ======================
     def _extract_math_expression(self, text: str) -> str:
-        """
-        Extract the FIRST valid arithmetic expression.
-        Works for:
-        - 3+2
-        - what is 3+2
-        - calculate (4+6)*2
-        """
-
         matches = re.findall(
             r"\(?\d+(?:\.\d+)?(?:\s*[\+\-\*/]\s*\(?\d+(?:\.\d+)?\)?)+",
             text,
         )
-
         return matches[0] if matches else ""
 
     def _solve_math(self, expr: str):
