@@ -1,42 +1,38 @@
-import faiss
+from typing import List, Dict
+from rag.embeddings import EmbeddingModel
 import numpy as np
 
 
 class FileFaissIndex:
-    def __init__(self, embedder):
-        self.embedder = embedder
-        self.index = None
+    """
+    Lightweight in-memory vector index (FAISS-like).
+    """
+
+    def __init__(self):
+        self.embedder = EmbeddingModel()
+        self.vectors = []
         self.texts = []
         self.metadatas = []
 
-    def build(self, chunks, metadatas):
-        self.texts = [c["text"] for c in chunks]
+    def build(self, chunks: List[str], metadatas: List[Dict]):
+        self.vectors = self.embedder.embed_batch(chunks)
+        self.texts = chunks
         self.metadatas = metadatas
 
-        embeddings = self.embedder.embed_batch(self.texts)
-        vectors = np.array(embeddings).astype("float32")
-
-        dim = vectors.shape[1]
-        self.index = faiss.IndexFlatL2(dim)
-        self.index.add(vectors)
-
-    def search(self, query_vector, top_k=5):
-        if self.index is None:
+    def search(self, query: str, top_k: int = 3):
+        if not self.vectors:
             return []
 
-        D, I = self.index.search(
-            np.array([query_vector]).astype("float32"),
-            top_k
-        )
+        query_vec = self.embedder.embed(query)[0]
 
-        results = []
-        for idx in I[0]:
-            if idx < len(self.texts):
-                results.append(
-                    {
-                        "text": self.texts[idx],
-                        "metadata": self.metadatas[idx],
-                    }
-                )
+        sims = np.dot(self.vectors, query_vec)
 
-        return results
+        top_idx = sims.argsort()[-top_k:][::-1]
+
+        return [
+            {
+                "text": self.texts[i],
+                "metadata": self.metadatas[i],
+            }
+            for i in top_idx
+        ]
