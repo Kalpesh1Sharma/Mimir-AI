@@ -74,3 +74,9 @@ class FileQASystem:
             chunks.append(chunk)
 
         return chunks
+        # ======================
+    # CLEAR FILES
+    # ======================
+    def clear(self):
+        self.index = FileFaissIndex()
+        self._files_loaded = False
