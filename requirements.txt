@@ -19,3 +19,5 @@ streamlit
 
 # Optional (safe to include)
 pydantic
+python-multipart
+tavily-python
