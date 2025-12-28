@@ -54,11 +54,11 @@ class FileQASystem:
                 "confidence": 0.3,
             }
 
-        context = "\n".join([r.get("text", "") for r in results])
+        context = "\n\n".join([r["text"] for r in results])
 
         answer = (
             "Based on the uploaded files:\n\n"
-            + context[:800]
+            + context[:1200]
         )
 
         return {
