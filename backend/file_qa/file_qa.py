@@ -1,73 +1,92 @@
+from typing import List, Dict, Any
+
 from backend.file_qa.loader import FileLoader
 from backend.file_qa.chunker import TextChunker
 from backend.file_qa.index import FileFaissIndex
-from rag.embeddings import EmbeddingModel
 
 
 class FileQASystem:
     """
     Handles file-based question answering.
+
+    Flow:
+    Files → Load → Chunk → Embed → Index → Retrieve → Answer
     """
 
     def __init__(self):
         self.loader = FileLoader()
         self.chunker = TextChunker()
-
-        # 🔑 Create ONE embedder instance
-        self.embedder = EmbeddingModel()
-
-        # 🔑 Pass embedder into FAISS index
-        self.index = FileFaissIndex(self.embedder)
+        self.index = FileFaissIndex()
 
         self._files_loaded = False
 
-    def ingest_files(self, file_paths):
+    # ======================
+    # PUBLIC CONTRACTS
+    # ======================
+    def has_files(self) -> bool:
+        """
+        Public, safe check used by assistant/router.
+        """
+        return self._files_loaded
+
+    # ======================
+    # FILE INGESTION
+    # ======================
+    def ingest_files(self, file_paths: List[str]):
+        """
+        Ingest user-uploaded files into vector index.
+        """
         texts, metadatas = self.loader.load_files(file_paths)
 
-        chunks = []
-        chunk_metas = []
+        if not texts:
+            return
+
+        all_chunks = []
+        all_metadata = []
 
         for text, meta in zip(texts, metadatas):
-            parts = self.chunker.chunk(text)
-            for p in parts:
-                chunks.append({"text": p})
-                chunk_metas.append(meta)
+            chunks = self.chunker.chunk(text)
+            all_chunks.extend(chunks)
+            all_metadata.extend([meta] * len(chunks))
 
-        self.index.build(chunks, chunk_metas)
+        if not all_chunks:
+            return
+
+        self.index.build(all_chunks, all_metadata)
         self._files_loaded = True
 
-    def answer(self, query):
+    # ======================
+    # QUESTION ANSWERING
+    # ======================
+    def answer(self, query: str) -> Dict[str, Any]:
+        """
+        Answer questions strictly from uploaded files.
+        """
         if not self._files_loaded:
             return {
-                "answer": "No files uploaded yet.",
+                "answer": "No files have been uploaded yet.",
                 "sources": [],
                 "confidence": 0.0,
+                "metadata": {"tool": "file_qa"},
             }
 
-        query_vec = self.embedder.embed(query)[0]
-        results = self.index.search(query_vec, top_k=5)
+        results = self.index.search(query)
 
         if not results:
             return {
                 "answer": "I couldn’t find relevant information in the uploaded files.",
                 "sources": [],
                 "confidence": 0.3,
+                "metadata": {"tool": "file_qa"},
             }
 
-        context = "\n\n".join([r["text"] for r in results])
+        context = "\n\n".join(r["text"] for r in results)
 
-        answer = (
-            "Based on the uploaded files:\n\n"
-            + context[:1200]
-        )
+        sources = list({r["metadata"].get("source", "uploaded_file") for r in results})
 
         return {
-            "answer": answer,
-            "sources": ["uploaded_file"],
-            "confidence": 0.9,
+            "answer": context,
+            "sources": sources,
+            "confidence": 0.85,
             "metadata": {"tool": "file_qa"},
         }
-
-    def clear(self):
-        self._files_loaded = False
-        self.index = FileFaissIndex(self.embedder)
