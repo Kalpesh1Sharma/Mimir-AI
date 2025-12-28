@@ -36,20 +36,20 @@ class MimirAssistant:
             except Exception:
                 pass
 
-        # 2️⃣ File QA
+        # 2️⃣ File QA (only if files exist)
         if self.file_qa.has_files():
-            result = self.file_qa.answer(text)
-            if result and result.get("answer"):
-                return result
+            file_result = self.file_qa.answer(text)
+            if file_result and file_result.get("confidence", 0) >= 0.5:
+                return file_result
 
         # 3️⃣ Persona + RAG
         persona_contract = self.persona_manager.load(persona)
         rag_result = self._handle_rag_query(text, persona_contract, mode)
 
-        if rag_result["confidence"] >= 0.6:
+        if rag_result.get("confidence", 0) >= 0.6:
             return rag_result
 
-        # 4️⃣ 🌍 WEB SEARCH FALLBACK (THIS FIXES EVERYTHING)
+        # 4️⃣ 🌍 WEB SEARCH FALLBACK (Tavily → SerpAPI)
         try:
             web = self.web_search.search(text)
             if web:
@@ -57,13 +57,22 @@ class MimirAssistant:
         except Exception:
             pass
 
-        # 5️⃣ Final refusal (very rare now)
+        # 5️⃣ Final fallback
         return {
             "answer": "I couldn’t find reliable information for this question.",
             "sources": [],
             "confidence": 0.2,
             "metadata": {"tool": "fallback"},
         }
+
+    # ======================
+    # FILE INGESTION / CLEAR
+    # ======================
+    def ingest_files(self, file_paths):
+        self.file_qa.ingest_files(file_paths)
+
+    def clear_files(self):
+        self.file_qa.clear()
 
     # ======================
     # RAG HANDLER
@@ -88,10 +97,10 @@ class MimirAssistant:
                 "answer": "",
                 "sources": [],
                 "confidence": 0.0,
-                "metadata": {"mode": "factual"},
+                "metadata": {"tool": "rag"},
             }
 
-        context = "\n\n".join([r["text"] for r in results])
+        context = "\n\n".join(r["text"] for r in results)
 
         answer = self._apply_persona_rules(
             context=context,
@@ -105,12 +114,6 @@ class MimirAssistant:
             "confidence": 0.9,
             "metadata": {"tool": "rag"},
         }
-
-    # ======================
-    # FILE INGESTION
-    # ======================
-    def ingest_files(self, file_paths):
-        self.file_qa.ingest_files(file_paths)
 
     # ======================
     # PERSONA LOGIC
