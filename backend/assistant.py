@@ -13,8 +13,6 @@ class MimirAssistant:
         self.embedder = EmbeddingModel()
         self.retriever = Retriever(self.embedder)
         self.file_qa = FileQASystem()
-
-        # ✅ Correct persona manager
         self.persona_manager = PersonaManager()
 
     # ======================
@@ -23,20 +21,25 @@ class MimirAssistant:
     def query(self, text, persona="default", mode="factual"):
         text = text.strip()
 
-        # 1️⃣ Math fast path
-        if self._is_simple_math(text):
-            return {
-                "answer": f"**{self._solve_math(text)}**",
-                "sources": [],
-                "confidence": 1.0,
-                "metadata": {"tool": "math"},
-            }
+        # 1️⃣ Math fast-path (NL + pure math)
+        if self._contains_math(text):
+            expr = self._extract_math_expression(text)
+            if expr:
+                try:
+                    return {
+                        "answer": f"**{self._solve_math(expr)}**",
+                        "sources": [],
+                        "confidence": 1.0,
+                        "metadata": {"tool": "math"},
+                    }
+                except Exception:
+                    pass  # fall through safely
 
-        # 2️⃣ File QA if files are uploaded
+        # 2️⃣ File QA if files uploaded
         if self.file_qa._files_loaded:
             return self.file_qa.answer(text)
 
-        # 3️⃣ RAG / Persona response
+        # 3️⃣ Persona + RAG
         persona_contract = self.persona_manager.load(persona)
         return self._handle_rag_query(text, persona_contract, mode)
 
@@ -47,7 +50,7 @@ class MimirAssistant:
         hard_rules = persona_contract.get("hard_rules", {})
         soft_prefs = persona_contract.get("soft_preferences", {})
 
-        # Creative mode → no grounding required
+        # Creative mode → no grounding
         if mode == "creative":
             return {
                 "answer": self._format_creative(text, soft_prefs),
@@ -90,21 +93,21 @@ class MimirAssistant:
         self.file_qa.ingest_files(file_paths)
 
     # ======================
-    # PERSONA HELPERS
+    # PERSONA LOGIC
     # ======================
     def _apply_persona_rules(self, context, hard_rules, soft_prefs):
-        # Enforce python-only persona
+        # Python-only persona
         if hard_rules.get("output_format") == "python":
             return context
 
-        # Emotional support tone
+        # Emotional support
         if hard_rules.get("empathetic_language_required"):
             return (
-                "I hear you. Here’s what I found that might help:\n\n"
+                "I hear you. You’re not alone.\n\n"
                 + context
             )
 
-        # Corporate tone
+        # Corporate
         if hard_rules.get("formal_language"):
             return "Summary:\n\n" + context
 
@@ -119,8 +122,18 @@ class MimirAssistant:
     # ======================
     # MATH HELPERS
     # ======================
-    def _is_simple_math(self, text: str) -> bool:
-        return bool(re.fullmatch(r"[0-9\.\+\-\*/\(\) ]+", text))
+    def _contains_math(self, text: str) -> bool:
+        return bool(re.search(r"\d+\s*[\+\-\*/]\s*\d+", text))
+
+    def _extract_math_expression(self, text: str) -> str:
+        """
+        Extracts math from NL text.
+        Examples:
+        - 'what is 3+2' → '3+2'
+        - 'calculate (4+6)*2' → '(4+6)*2'
+        """
+        match = re.search(r"([\d\.\+\-\*/\(\) ]+)", text)
+        return match.group(1).strip() if match else ""
 
     def _solve_math(self, expr: str):
         ops = {
