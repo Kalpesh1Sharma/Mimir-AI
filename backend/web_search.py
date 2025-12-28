@@ -1,78 +1,47 @@
+# backend/web_search.py
+
 import os
 import requests
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 
 class WebSearchQA:
     """
-    Web-based factual QA using Tavily (primary) with safe fallbacks.
+    Web search fallback using Tavily API.
     """
 
     def __init__(self):
-        self.tavily_key = os.getenv("TAVILY_API_KEY")
+        self.api_key = os.getenv("TAVILY_API_KEY")
+        self.endpoint = "https://api.tavily.com/search"
 
-        if not self.tavily_key:
-            raise ImportError(
-                "TAVILY_API_KEY not found in environment variables"
-            )
+        if not self.api_key:
+            raise RuntimeError("TAVILY_API_KEY not set")
 
-    # ======================
-    # PUBLIC ENTRY POINT
-    # ======================
-    def answer(self, query: str) -> Dict[str, Any]:
-        results = self._search_tavily(query)
-
-        if not results:
-            return {
-                "answer": "I couldn’t find reliable grounded information for this question.",
-                "sources": [],
-                "confidence": 0.3,
-                "metadata": {"tool": "web_search"},
-            }
-
-        # Simple synthesis (no hallucination)
-        top = results[0]
-
-        return {
-            "answer": f"**{top['answer']}**",
-            "sources": [top["source"]],
-            "confidence": 0.85,
-            "metadata": {"tool": "web_search"},
-        }
-
-    # ======================
-    # TAVILY SEARCH
-    # ======================
-    def _search_tavily(self, query: str) -> List[Dict[str, str]]:
-        url = "https://api.tavily.com/search"
-
+    def search(self, query: str) -> Dict[str, Any]:
         payload = {
-            "api_key": self.tavily_key,
+            "api_key": self.api_key,
             "query": query,
             "search_depth": "basic",
             "include_answer": True,
-            "include_sources": True,
-            "max_results": 3,
+            "max_results": 5,
         }
 
-        try:
-            resp = requests.post(url, json=payload, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
+        r = requests.post(self.endpoint, json=payload, timeout=15)
+        r.raise_for_status()
 
-            if not data.get("results"):
-                return []
+        data = r.json()
 
-            results = []
+        answer = data.get("answer")
+        sources = [
+            s.get("url") for s in data.get("results", []) if s.get("url")
+        ]
 
-            for r in data["results"]:
-                if r.get("answer"):
-                    results.append({
-                        "answer": r["answer"],
-                        "source": r.get("url", "web"),
-                    })
+        if not answer:
+            return {}
 
-            return results
-
-        except Exception:
-            return []
+        return {
+            "answer": f"**{answer}**",
+            "sources": sources,
+            "confidence": 0.85,
+            "metadata": {"tool": "web_search"},
+        }
