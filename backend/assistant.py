@@ -22,20 +22,19 @@ class MimirAssistant:
         text = text.strip()
 
         # 1️⃣ Math fast-path (NL + pure math)
-        if self._contains_math(text):
-            expr = self._extract_math_expression(text)
-            if expr:
-                try:
-                    return {
-                        "answer": f"**{self._solve_math(expr)}**",
-                        "sources": [],
-                        "confidence": 1.0,
-                        "metadata": {"tool": "math"},
-                    }
-                except Exception:
-                    pass  # fall through safely
+        expr = self._extract_math_expression(text)
+        if expr:
+            try:
+                return {
+                    "answer": f"**{self._solve_math(expr)}**",
+                    "sources": [],
+                    "confidence": 1.0,
+                    "metadata": {"tool": "math"},
+                }
+            except Exception:
+                pass  # safely fall through
 
-        # 2️⃣ File QA if files uploaded
+        # 2️⃣ File QA
         if self.file_qa._files_loaded:
             return self.file_qa.answer(text)
 
@@ -50,7 +49,6 @@ class MimirAssistant:
         hard_rules = persona_contract.get("hard_rules", {})
         soft_prefs = persona_contract.get("soft_preferences", {})
 
-        # Creative mode → no grounding
         if mode == "creative":
             return {
                 "answer": self._format_creative(text, soft_prefs),
@@ -59,7 +57,6 @@ class MimirAssistant:
                 "metadata": {"mode": "creative"},
             }
 
-        # Factual mode → retrieval
         query_vec = self.embedder.embed(text)[0]
         results = self.retriever.retrieve(query_vec)
 
@@ -96,44 +93,40 @@ class MimirAssistant:
     # PERSONA LOGIC
     # ======================
     def _apply_persona_rules(self, context, hard_rules, soft_prefs):
-        # Python-only persona
         if hard_rules.get("output_format") == "python":
             return context
 
-        # Emotional support
         if hard_rules.get("empathetic_language_required"):
-            return (
-                "I hear you. You’re not alone.\n\n"
-                + context
-            )
+            return "I hear you.\n\n" + context
 
-        # Corporate
         if hard_rules.get("formal_language"):
             return "Summary:\n\n" + context
 
         return context
 
     def _format_creative(self, text, soft_prefs):
-        tone = soft_prefs.get("tone", "neutral")
-        if tone == "narrative":
+        if soft_prefs.get("tone") == "narrative":
             return f"Let me tell this as a story:\n\n{text}"
         return text
 
     # ======================
-    # MATH HELPERS
+    # MATH (FINAL FIX)
     # ======================
-    def _contains_math(self, text: str) -> bool:
-        return bool(re.search(r"\d+\s*[\+\-\*/]\s*\d+", text))
-
     def _extract_math_expression(self, text: str) -> str:
         """
-        Extracts math from NL text.
-        Examples:
-        - 'what is 3+2' → '3+2'
-        - 'calculate (4+6)*2' → '(4+6)*2'
+        Extract the FIRST valid arithmetic expression.
+        Works for:
+        - 3+2
+        - what is 3+2
+        - calculate (4+6)*2
         """
-        match = re.search(r"([\d\.\+\-\*/\(\) ]+)", text)
-        return match.group(1).strip() if match else ""
+
+        matches = re.findall(
+            r"\(?\d+(?:\.\d+)?(?:\s*[\+\-\*/]\s*\(?\d+(?:\.\d+)?\)?)+",
+            text,
+        )
+
+        return matches[0] if matches else ""
 
     def _solve_math(self, expr: str):
         ops = {
