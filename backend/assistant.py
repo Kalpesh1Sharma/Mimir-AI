@@ -5,7 +5,7 @@ import operator
 from rag.embeddings import EmbeddingModel
 from rag.retrieve import Retriever
 from backend.file_qa.file_qa import FileQASystem
-from backend.personas import PERSONAS
+from backend.personas import PersonaManager
 
 
 class MimirAssistant:
@@ -13,6 +13,9 @@ class MimirAssistant:
         self.embedder = EmbeddingModel()
         self.retriever = Retriever(self.embedder)
         self.file_qa = FileQASystem()
+
+        # ✅ Correct persona manager
+        self.persona_manager = PersonaManager()
 
     # ======================
     # PUBLIC ENTRY POINT
@@ -34,18 +37,20 @@ class MimirAssistant:
             return self.file_qa.answer(text)
 
         # 3️⃣ RAG / Persona response
-        return self._handle_rag_query(text, persona, mode)
+        persona_contract = self.persona_manager.load(persona)
+        return self._handle_rag_query(text, persona_contract, mode)
 
     # ======================
     # RAG HANDLER
     # ======================
-    def _handle_rag_query(self, text, persona, mode):
-        persona_prompt = PERSONAS.get(persona, PERSONAS["default"])
+    def _handle_rag_query(self, text, persona_contract, mode):
+        hard_rules = persona_contract.get("hard_rules", {})
+        soft_prefs = persona_contract.get("soft_preferences", {})
 
         # Creative mode → no grounding required
         if mode == "creative":
             return {
-                "answer": persona_prompt["prefix"] + "\n\n" + text,
+                "answer": self._format_creative(text, soft_prefs),
                 "sources": [],
                 "confidence": 0.6,
                 "metadata": {"mode": "creative"},
@@ -65,10 +70,10 @@ class MimirAssistant:
 
         context = "\n\n".join([r["text"] for r in results])
 
-        answer = (
-            persona_prompt["prefix"]
-            + "\n\n"
-            + context[:1200]
+        answer = self._apply_persona_rules(
+            context=context,
+            hard_rules=hard_rules,
+            soft_prefs=soft_prefs,
         )
 
         return {
@@ -83,6 +88,33 @@ class MimirAssistant:
     # ======================
     def ingest_files(self, file_paths):
         self.file_qa.ingest_files(file_paths)
+
+    # ======================
+    # PERSONA HELPERS
+    # ======================
+    def _apply_persona_rules(self, context, hard_rules, soft_prefs):
+        # Enforce python-only persona
+        if hard_rules.get("output_format") == "python":
+            return context
+
+        # Emotional support tone
+        if hard_rules.get("empathetic_language_required"):
+            return (
+                "I hear you. Here’s what I found that might help:\n\n"
+                + context
+            )
+
+        # Corporate tone
+        if hard_rules.get("formal_language"):
+            return "Summary:\n\n" + context
+
+        return context
+
+    def _format_creative(self, text, soft_prefs):
+        tone = soft_prefs.get("tone", "neutral")
+        if tone == "narrative":
+            return f"Let me tell this as a story:\n\n{text}"
+        return text
 
     # ======================
     # MATH HELPERS
