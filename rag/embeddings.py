@@ -5,7 +5,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 class EmbeddingModel:
     """
     Cloud-safe embedding model using TF-IDF.
-    No external downloads. No transformers.
+    Compatible with both RAG and File-QA pipelines.
     """
 
     def __init__(self):
@@ -15,14 +15,21 @@ class EmbeddingModel:
         )
         self._fitted = False
 
-    def embed(self, texts):
-        if isinstance(texts, str):
-            texts = [texts]
+    # -------- single query embedding --------
+    def embed(self, text: str):
+        if not self._fitted:
+            self.vectorizer.fit([text])
+            self._fitted = True
+
+        return self.vectorizer.transform([text]).toarray()
+
+    # -------- batch embedding (for documents) --------
+    def embed_batch(self, texts):
+        if not texts:
+            return np.array([])
 
         if not self._fitted:
             self.vectorizer.fit(texts)
             self._fitted = True
 
-        vectors = self.vectorizer.transform(texts).toarray()
-        return np.array(vectors)
-
+        return self.vectorizer.transform(texts).toarray()
