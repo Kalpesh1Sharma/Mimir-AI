@@ -1,52 +1,31 @@
 import numpy as np
-import faiss
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-class FileIndex:
+class EmbeddingModel:
     """
-    FAISS index for file-based question answering.
+    Cloud-safe embedding model using TF-IDF.
     """
 
-    def __init__(self, embedder):
-        self.embedder = embedder
-        self.index = None
-        self.metadatas = []
-
-    def build(self, chunks, metadatas):
-        """
-        chunks: List[dict] with key 'text'
-        metadatas: List[dict]
-        """
-
-        if not chunks:
-            return
-
-        # 🔑 FIX: extract raw text from chunks
-        texts = [chunk["text"] for chunk in chunks]
-
-        embeddings = self.embedder.embed_batch(texts)
-
-        if embeddings.size == 0:
-            return
-
-        dim = embeddings.shape[1]
-        self.index = faiss.IndexFlatL2(dim)
-        self.index.add(embeddings.astype("float32"))
-
-        self.metadatas = metadatas
-
-    def search(self, query_vector, top_k=5):
-        if self.index is None:
-            return []
-
-        distances, indices = self.index.search(
-            query_vector.reshape(1, -1).astype("float32"),
-            top_k,
+    def __init__(self):
+        self.vectorizer = TfidfVectorizer(
+            stop_words="english",
+            max_features=512,
         )
+        self._fitted = False
 
-        results = []
-        for idx in indices[0]:
-            if idx < len(self.metadatas):
-                results.append(self.metadatas[idx])
+    def embed(self, text: str):
+        if not self._fitted:
+            self.vectorizer.fit([text])
+            self._fitted = True
+        return self.vectorizer.transform([text]).toarray()
 
-        return results
+    def embed_batch(self, texts):
+        if not texts:
+            return np.array([])
+
+        if not self._fitted:
+            self.vectorizer.fit(texts)
+            self._fitted = True
+
+        return self.vectorizer.transform(texts).toarray()
