@@ -1,31 +1,37 @@
-import numpy as np
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 class EmbeddingModel:
     """
-    Cloud-safe embedding model using TF-IDF.
+    Simple TF-IDF embedding model with safety checks.
     """
 
     def __init__(self):
         self.vectorizer = TfidfVectorizer(
             stop_words="english",
-            max_features=512,
+            token_pattern=r"(?u)\b\w+\b"
         )
-        self._fitted = False
+
+    def _has_valid_tokens(self, text: str) -> bool:
+        # Check if text has at least one alphabetic token
+        return bool(re.search(r"[a-zA-Z]", text))
 
     def embed(self, text: str):
-        if not self._fitted:
-            self.vectorizer.fit([text])
-            self._fitted = True
-        return self.vectorizer.transform([text]).toarray()
+        if not text or not self._has_valid_tokens(text):
+            # Return a dummy vector instead of crashing
+            return [[0.0]]
+
+        self.vectorizer.fit([text])
+        vec = self.vectorizer.transform([text]).toarray()
+        return vec.tolist()
 
     def embed_batch(self, texts):
-        if not texts:
-            return np.array([])
+        valid_texts = [t for t in texts if self._has_valid_tokens(t)]
 
-        if not self._fitted:
-            self.vectorizer.fit(texts)
-            self._fitted = True
+        if not valid_texts:
+            return [[0.0] for _ in texts]
 
-        return self.vectorizer.transform(texts).toarray()
+        self.vectorizer.fit(valid_texts)
+        vectors = self.vectorizer.transform(texts).toarray()
+        return vectors.tolist()
