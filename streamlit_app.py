@@ -1,159 +1,155 @@
-
-
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import streamlit as st
+import requests
 
-from backend.assistant import MimirAssistant
-
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
+# ======================
+# CONFIG
+# ======================
+API_URL = "https://mimir-ai.onrender.com"
 
 st.set_page_config(
     page_title="Mimir",
+    page_icon="🧠",
     layout="centered",
 )
 
-# --------------------------------------------------
-# LOAD SECRETS (Streamlit Cloud compatible)
-# --------------------------------------------------
+# ======================
+# HELPERS
+# ======================
+def query_mimir(query: str, persona: str, mode: str):
+    payload = {
+        "query": query,
+        "persona": persona,
+        "mode": mode,
+    }
+    r = requests.post(f"{API_URL}/query", json=payload, timeout=30)
+    r.raise_for_status()
+    return r.json()
 
-if "GOOGLE_API_KEY" in st.secrets:
-    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
-if "TAVILY_API_KEY" in st.secrets:
-    os.environ["TAVILY_API_KEY"] = st.secrets["TAVILY_API_KEY"]
+def upload_files(files):
+    multipart = []
+    for f in files:
+        multipart.append(
+            ("files", (f.name, f.getvalue(), f.type))
+        )
+    r = requests.post(
+        f"{API_URL}/files/upload",
+        files=multipart,
+        timeout=60,
+    )
+    r.raise_for_status()
+    return r.json()
 
-# --------------------------------------------------
-# INIT ASSISTANT (SESSION SAFE)
-# --------------------------------------------------
 
-if "mimir" not in st.session_state:
-    st.session_state.mimir = MimirAssistant()
+def clear_files():
+    r = requests.post(f"{API_URL}/files/clear", timeout=15)
+    r.raise_for_status()
+    return r.json()
 
-if "chat" not in st.session_state:
-    st.session_state.chat = []
-
-# --------------------------------------------------
-# HEADER
-# --------------------------------------------------
-
-st.markdown(
-    """
-    <h1 style="text-align:center;">🧠 Mimir</h1>
-    <p style="text-align:center; color:gray;">
-        A grounded, persona-adaptive RAG assistant
-    </p>
-    <hr>
-    """,
-    unsafe_allow_html=True,
-)
-
-# --------------------------------------------------
+# ======================
 # SIDEBAR
-# --------------------------------------------------
-
+# ======================
 with st.sidebar:
-    st.markdown("## 🎛 Controls")
+    st.title("🧠 Mimir")
 
     persona = st.selectbox(
         "Persona",
-        [
+        options=[
             "default",
+            "python_only",
             "emotional_support",
-            "only_python",
+            "corporate",
+            "historical_style",
         ],
+        index=0,
     )
 
     mode = st.radio(
         "Mode",
-        ["factual", "creative"],
+        options=["factual", "creative"],
         horizontal=True,
     )
 
-    st.markdown("---")
+    st.divider()
 
     uploaded_files = st.file_uploader(
-        "Upload files",
-        type=["pdf", "txt"],
+        "📎 Upload files",
         accept_multiple_files=True,
+        type=["txt", "md"],
     )
 
-    if st.button("➕ Upload files"):
-        if uploaded_files:
-            paths = []
-            for f in uploaded_files:
-                path = f"uploaded_{f.name}"
-                with open(path, "wb") as out:
-                    out.write(f.read())
-                paths.append(path)
+    if uploaded_files:
+        if st.button("Index uploaded files"):
+            with st.spinner("Indexing files..."):
+                res = upload_files(uploaded_files)
+            st.success(f"{res['files_loaded']} file(s) indexed.")
 
-            st.session_state.mimir.ingest_files(paths)
-            st.success("Files uploaded successfully")
+    if st.button("Clear uploaded files"):
+        clear_files()
+        st.success("Uploaded files cleared.")
 
-    if st.button("🗑 Clear session"):
-        st.session_state.mimir.clear_files()
-        st.session_state.chat = []
-        st.success("Session cleared")
+# ======================
+# MAIN CHAT UI
+# ======================
+st.markdown(
+    """
+    <h2 style="text-align:center;">Mimir</h2>
+    <p style="text-align:center;color:gray;">
+    A persona-adaptive RAG assistant
+    </p>
+    """,
+    unsafe_allow_html=True,
+)
 
-    st.caption(
-        "• Persona-aware reasoning\n"
-        "• FAISS RAG\n"
-        "• File Q&A\n"
-        "• Safe web answers"
-    )
+if "chat" not in st.session_state:
+    st.session_state.chat = []
 
-# --------------------------------------------------
-# CHAT HISTORY
-# --------------------------------------------------
-
+# Display chat history
 for msg in st.session_state.chat:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"], unsafe_allow_html=True)
+        st.markdown(msg["content"])
 
-# --------------------------------------------------
-# CHAT INPUT
-# --------------------------------------------------
-
+# Chat input
 user_input = st.chat_input("Ask Mimir…")
 
 if user_input:
-    # user message
+    # Show user message
     st.session_state.chat.append(
         {"role": "user", "content": user_input}
     )
-
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # assistant response
+    # Call API
     with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
-            result = st.session_state.mimir.query(
-                text=user_input,
-                persona=persona,
-                mode=mode,
-            )
+            try:
+                result = query_mimir(
+                    user_input,
+                    persona=persona,
+                    mode=mode,
+                )
 
-        answer = result.get("answer", "")
-        sources = result.get("sources", [])
-        confidence = result.get("confidence", 0.0)
-        metadata = result.get("metadata", {})
+                answer = result.get("answer", "")
+                sources = result.get("sources", [])
+                confidence = result.get("confidence", 0)
 
-        st.markdown(answer, unsafe_allow_html=True)
-        st.caption(f"Confidence: {confidence:.2f}")
+                st.markdown(answer)
 
-        if sources:
-            with st.expander("Sources"):
-                for s in sources:
-                    st.markdown(f"- {s}")
+                if sources:
+                    with st.expander("Sources"):
+                        for s in sources:
+                            st.markdown(f"- {s}")
 
-        if metadata.get("note") == "intentional_refusal":
-            st.info("This response was intentionally limited to avoid misinformation.")
+                st.caption(f"Confidence: {confidence}")
 
-    st.session_state.chat.append(
-        {"role": "assistant", "content": answer}
-    )
+                st.session_state.chat.append(
+                    {"role": "assistant", "content": answer}
+                )
+
+            except Exception as e:
+                error_msg = "Something went wrong. Please try again."
+                st.error(error_msg)
+                st.session_state.chat.append(
+                    {"role": "assistant", "content": error_msg}
+                )
