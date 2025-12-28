@@ -1,81 +1,78 @@
-from typing import List, Dict, Any
-
-from backend.file_qa.loader import FileLoader
-from backend.file_qa.chunker import TextChunker
-from backend.file_qa.index import FileFaissIndex
+import os
+import requests
+from typing import Dict, Any, List
 
 
-class FileQASystem:
+class WebSearchQA:
     """
-    Handles file-based question answering.
-
-    Files → Load → Chunk → Embed → Index → Retrieve
+    Web-based factual QA using Tavily (primary) with safe fallbacks.
     """
 
-    def __init__(self, embedder):
-        self.loader = FileLoader()
-        self.chunker = TextChunker()
-        self.index = FileFaissIndex(embedder)
+    def __init__(self):
+        self.tavily_key = os.getenv("TAVILY_API_KEY")
 
-        self._files_loaded = False
-
-    # ======================
-    # PUBLIC CONTRACT
-    # ======================
-    def has_files(self) -> bool:
-        return self._files_loaded
+        if not self.tavily_key:
+            raise ImportError(
+                "TAVILY_API_KEY not found in environment variables"
+            )
 
     # ======================
-    # FILE INGESTION
-    # ======================
-    def ingest_files(self, file_paths: List[str]):
-        texts, metadatas = self.loader.load_files(file_paths)
-
-        if not texts:
-            return
-
-        all_chunks = []
-        all_metadata = []
-
-        for text, meta in zip(texts, metadatas):
-            chunks = self.chunker.chunk(text)
-            all_chunks.extend(chunks)
-            all_metadata.extend([meta] * len(chunks))
-
-        if not all_chunks:
-            return
-
-        self.index.build(all_chunks, all_metadata)
-        self._files_loaded = True
-
-    # ======================
-    # QUESTION ANSWERING
+    # PUBLIC ENTRY POINT
     # ======================
     def answer(self, query: str) -> Dict[str, Any]:
-        if not self._files_loaded:
-            return {
-                "answer": "No files have been uploaded yet.",
-                "sources": [],
-                "confidence": 0.0,
-                "metadata": {"tool": "file_qa"},
-            }
-
-        results = self.index.search(query)
+        results = self._search_tavily(query)
 
         if not results:
             return {
-                "answer": "I couldn’t find relevant information in the uploaded files.",
+                "answer": "I couldn’t find reliable grounded information for this question.",
                 "sources": [],
                 "confidence": 0.3,
-                "metadata": {"tool": "file_qa"},
+                "metadata": {"tool": "web_search"},
             }
 
-        context = "\n\n".join(r["text"] for r in results)
-        sources = list({r["metadata"].get("source", "uploaded_file") for r in results})
+        # Simple synthesis (no hallucination)
+        top = results[0]
 
         return {
-            "answer": context,
-            "sources": sources,
+            "answer": f"**{top['answer']}**",
+            "sources": [top["source"]],
             "confidence": 0.85,
-            "metadata": {"tool": "file_qa"},
+            "metadata": {"tool": "web_search"},
         }
+
+    # ======================
+    # TAVILY SEARCH
+    # ======================
+    def _search_tavily(self, query: str) -> List[Dict[str, str]]:
+        url = "https://api.tavily.com/search"
+
+        payload = {
+            "api_key": self.tavily_key,
+            "query": query,
+            "search_depth": "basic",
+            "include_answer": True,
+            "include_sources": True,
+            "max_results": 3,
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if not data.get("results"):
+                return []
+
+            results = []
+
+            for r in data["results"]:
+                if r.get("answer"):
+                    results.append({
+                        "answer": r["answer"],
+                        "source": r.get("url", "web"),
+                    })
+
+            return results
+
+        except Exception:
+            return []
