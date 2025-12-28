@@ -14,8 +14,8 @@ class MimirAssistant:
         self.embedder = EmbeddingModel()
         self.retriever = Retriever(self.embedder)
         self.file_qa = FileQASystem()
-        self.web_search = WebSearchQA()
         self.persona_manager = PersonaManager()
+        self.web_search = WebSearchQA()
 
     # ======================
     # PUBLIC ENTRY POINT
@@ -36,18 +36,34 @@ class MimirAssistant:
             except Exception:
                 pass
 
-        # 2️⃣ File-based QA (only if files exist)
+        # 2️⃣ File QA
         if self.file_qa.has_files():
-            return self.file_qa.answer(text)
+            result = self.file_qa.answer(text)
+            if result and result.get("answer"):
+                return result
 
-        # 3️⃣ Web search (facts, people, events)
-        web_result = self.web_search.answer(text)
-        if web_result and web_result.get("confidence", 0) >= 0.6:
-            return web_result
-
-        # 4️⃣ RAG fallback
+        # 3️⃣ Persona + RAG
         persona_contract = self.persona_manager.load(persona)
-        return self._handle_rag_query(text, persona_contract, mode)
+        rag_result = self._handle_rag_query(text, persona_contract, mode)
+
+        if rag_result["confidence"] >= 0.6:
+            return rag_result
+
+        # 4️⃣ 🌍 WEB SEARCH FALLBACK (THIS FIXES EVERYTHING)
+        try:
+            web = self.web_search.search(text)
+            if web:
+                return web
+        except Exception:
+            pass
+
+        # 5️⃣ Final refusal (very rare now)
+        return {
+            "answer": "I couldn’t find reliable information for this question.",
+            "sources": [],
+            "confidence": 0.2,
+            "metadata": {"tool": "fallback"},
+        }
 
     # ======================
     # RAG HANDLER
@@ -69,9 +85,9 @@ class MimirAssistant:
 
         if not results:
             return {
-                "answer": "I couldn’t find reliable grounded information for this question.",
+                "answer": "",
                 "sources": [],
-                "confidence": 0.3,
+                "confidence": 0.0,
                 "metadata": {"mode": "factual"},
             }
 
@@ -86,8 +102,8 @@ class MimirAssistant:
         return {
             "answer": answer,
             "sources": list({r["metadata"]["source"] for r in results}),
-            "confidence": 0.85,
-            "metadata": {"mode": "factual", "tool": "rag"},
+            "confidence": 0.9,
+            "metadata": {"tool": "rag"},
         }
 
     # ======================
@@ -100,9 +116,6 @@ class MimirAssistant:
     # PERSONA LOGIC
     # ======================
     def _apply_persona_rules(self, context, hard_rules, soft_prefs):
-        if hard_rules.get("output_format") == "python":
-            return context
-
         if hard_rules.get("empathetic_language_required"):
             return "I hear you.\n\n" + context
 
@@ -117,16 +130,16 @@ class MimirAssistant:
         return text
 
     # ======================
-    # MATH ENGINE
+    # MATH
     # ======================
-    def _extract_math_expression(self, text):
+    def _extract_math_expression(self, text: str) -> str:
         matches = re.findall(
             r"\(?\d+(?:\.\d+)?(?:\s*[\+\-\*/]\s*\(?\d+(?:\.\d+)?\)?)+",
             text,
         )
         return matches[0] if matches else ""
 
-    def _solve_math(self, expr):
+    def _solve_math(self, expr: str):
         ops = {
             ast.Add: operator.add,
             ast.Sub: operator.sub,
