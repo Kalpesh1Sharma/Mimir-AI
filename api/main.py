@@ -6,6 +6,8 @@ import shutil
 import os
 import uuid
 
+from fastapi.middleware.cors import CORSMiddleware
+
 from api.schemas import (
     QueryRequest,
     QueryResponse,
@@ -16,6 +18,9 @@ from api.schemas import (
 from api.deps import get_assistant
 from backend.assistant import MimirAssistant
 
+# --------------------------------------------------
+# APP INIT (MUST BE FIRST)
+# --------------------------------------------------
 
 app = FastAPI(
     title="Mimir API",
@@ -23,6 +28,21 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# --------------------------------------------------
+# CORS (AFTER app exists)
+# --------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --------------------------------------------------
+# FILE STORAGE
+# --------------------------------------------------
 
 UPLOAD_DIR = "uploaded_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -82,10 +102,8 @@ def query_mimir(
     payload: QueryRequest,
     assistant: MimirAssistant = Depends(get_assistant),
 ):
-    result = assistant.query(
+    return assistant.query(
         text=payload.query,
         persona=payload.persona,
         mode=payload.mode,
     )
-
-    return result
